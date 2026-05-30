@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>アカシ — 検証</title>
+<style>
+  :root{--bg:#0b0d12;--card:#141821;--ink:#e8ecf3;--mut:#8b93a7;--acc:#5b8cff;--ok:#37d39b;--warn:#f5a524;--line:#222838}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.6}
+  .wrap{max-width:760px;margin:0 auto;padding:18px 22px 60px}
+  a{color:var(--acc)} .logo{font-weight:800} .logo b{color:var(--acc)}
+  header{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--line)}
+  nav a{margin-left:16px;font-size:14px;text-decoration:none;color:var(--mut)}
+  .drop{border:2px dashed var(--line);border-radius:14px;padding:46px 20px;text-align:center;margin:22px 0;cursor:pointer;transition:.15s}
+  .drop.hl{border-color:var(--acc);background:#10141d}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin:16px 0}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
+  .mut{color:var(--mut);font-size:13px}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
+  .row .k{color:var(--mut);flex:0 0 130px}
+  .big{font-size:20px;font-weight:800} .ok{color:var(--ok)} .bad{color:#ff6b6b}
+  .pill{font-size:11px;border-radius:999px;padding:2px 9px;border:1px solid var(--line)}
+  .pill.ok{color:var(--ok);border-color:var(--ok)} .pill.pend{color:var(--warn);border-color:var(--warn)} .pill.bad{color:#ff6b6b;border-color:#ff6b6b}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><a href="/" style="text-decoration:none"><b>アカシ</b></a></div>
+    <nav><a href="/app">新規作品</a><a href="/verify">検証</a></nav>
+  </header>
+
+  <h2>ファイルを検証する</h2>
+  <p class="mut">ファイルをドロップすると、その正確なバイト列がいつ・誰の鍵で署名され、どのチェーンに刻まれたかを確認します。アカウント不要です。</p>
+
+  <div class="drop" id="drop">
+    <div class="big">ここにファイルをドロップ</div>
+    <div class="mut">またはクリックして選択</div>
+    <input type="file" id="file" style="display:none">
+  </div>
+
+  <div id="result"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const drop = $('#drop'), file = $('#file');
+drop.onclick = ()=>file.click();
+['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('hl');}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('hl');}));
+drop.addEventListener('drop',ev=>{if(ev.dataTransfer.files[0])verify(ev.dataTransfer.files[0]);});
+file.onchange=()=>{if(file.files[0])verify(file.files[0]);};
+
+function pill(s){const c=s==='confirmed'?'ok':(s==='pending'?'pend':'bad');const t=s==='confirmed'?'確定':(s==='pending'?'保留中':'失敗');return `<span class="pill ${c}">${t}</span>`;}
+
+async function verify(f){
+  $('#result').innerHTML = '<div class="card mut">照合中…</div>';
+  const fd = new FormData(); fd.append('file', f);
+  const j = await (await fetch('/api/verify', {method:'POST', body:fd})).json();
+  if(!j.found){
+    $('#result').innerHTML = `<div class="card"><div class="big bad">記録なし</div>
+      <p class="mut">この内容に一致する証跡は見つかりませんでした。</p>
+      <div class="row"><div class="k">sha256</div><div class="mono">${j.sha256||''}</div></div></div>`;
+    return;
+  }
+  const d=j.doc||{};
+  const anchors = (j.anchors||[]).map(a=>{
+    const link=(a.kind==='solana'&&a.ref)?` <a href="https://explorer.solana.com/tx/${a.ref}?cluster=devnet" target="_blank">tx</a>`:'';
+    const name=a.kind==='ots'?'Bitcoin (OpenTimestamps)':'Solana';
+    return `<div class="row"><div class="k">${name}</div><div>${pill(a.status)}${link}</div></div>`;
+  }).join('');
+  $('#result').innerHTML = `<div class="card">
+    <div class="big ${j.chain_ok?'ok':'bad'}">${j.chain_ok?'✓ 真正な証跡':'⚠ 連鎖が破損'}</div>
+    <p class="mut">この内容は下記の時刻に台帳へ刻まれ、署名鍵で署名されています。</p>
+    <div class="row"><div class="k">刻まれた時刻</div><div>${j.sealed_at||'—'}</div></div>
+    <div class="row"><div class="k">タイトル</div><div>${d.title||d.filename||'—'}</div></div>
+    <div class="row"><div class="k">sha256</div><div class="mono">${j.sha256}</div></div>
+    <div class="row"><div class="k">署名鍵</div><div class="mono">${j.signer_key||'—'}</div></div>
+    <div class="row"><div class="k">連鎖整合性</div><div>${j.chain_ok?'<span class="pill ok">改ざんなし</span>':'<span class="pill bad">破損</span>'}</div></div>
+    ${anchors}
+    <p class="mut" style="margin-top:14px">トラストレス検証:
+      <a href="/api/works/${j.lid}/ledger.jsonl">台帳</a> と
+      <a href="/api/works/${j.lid}/proof.ots">OTS証明</a> をDLし、
+      <span class="mono">ots verify</span> と連鎖再計算でサーバ非依存に確認できます。</p>
+  </div>`;
+}
+</script>
+</body>
+</html>

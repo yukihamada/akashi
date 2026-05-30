@@ -1,0 +1,34 @@
+app = "akashi"
+primary_region = "nrt"
+
+[build]
+
+[env]
+  PORT = "8080"
+  STATIC_DIR = "/app/frontend"
+  DATA_DIR = "/data"
+  DATABASE_PATH = "/data/akashi.db"
+  SOLANA_RPC_URL = "https://api.devnet.solana.com"
+  # BASE_URL, MASTER_SIGNING_SECRET, EDIT_TOKEN_SECRET, SOLANA_SECRET via `fly secrets set`
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[mounts]]
+  source = "akashi_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -1,0 +1,49 @@
+[package]
+name = "akashi"
+version = "0.1.0"
+edition = "2021"
+description = "アカシ — document version control with tamper-evident, blockchain-anchored evidence."
+
+[lib]
+name = "akashi"
+path = "src/lib.rs"
+
+[[bin]]
+name = "akashi"
+path = "src/main.rs"
+
+[[bin]]
+name = "akashi-verify"
+path = "src/bin/akashi-verify.rs"
+
+[dependencies]
+axum = { version = "0.7", features = ["multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net", "time"] }
+tower-http = { version = "0.5", features = ["fs", "compression-br", "compression-gzip", "cors"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+chrono = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Provenance / tamper-evident chain primitives — PACT reference implementation
+# (Apache-2.0, public). We reuse only the generic ledger primitives
+# (Envelope, canonical JSON, sha256, Ed25519), not the accounting gate logic.
+pact = { git = "https://github.com/yukihamada/pact", rev = "54bb9d5ab283dd1542d09bdcc0ec8968d10dfbbb" }
+
+# Crypto / encoding
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+ed25519-dalek = "2"          # raw Solana tx signing (binary, no prefix)
+bs58 = "0.5"                 # Solana base58 pubkeys / blockhash
+base64 = "0.22"              # Solana tx wire encoding
+getrandom = "0.2"            # work ids + key material
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

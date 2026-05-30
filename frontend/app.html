@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>アカシ — 作品</title>
+<style>
+  :root{--bg:#0b0d12;--card:#141821;--ink:#e8ecf3;--mut:#8b93a7;--acc:#5b8cff;--ok:#37d39b;--warn:#f5a524;--line:#222838}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.6}
+  .wrap{max-width:860px;margin:0 auto;padding:18px 22px 60px}
+  a{color:var(--acc)} .logo{font-weight:800} .logo b{color:var(--acc)}
+  header{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--line)}
+  nav a{margin-left:16px;font-size:14px;text-decoration:none;color:var(--mut)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin:16px 0}
+  h2{font-size:18px;margin:0 0 12px} label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+  input{width:100%;background:#0d1018;border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:10px;font-size:14px}
+  .btn{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;font-size:14px}
+  .btn:disabled{opacity:.5}
+  .mut{color:var(--mut);font-size:13px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
+  .v{border-top:1px solid var(--line);padding:12px 0}
+  .pill{font-size:11px;border-radius:999px;padding:2px 9px;border:1px solid var(--line)}
+  .pill.ok{color:var(--ok);border-color:var(--ok)} .pill.pend{color:var(--warn);border-color:var(--warn)} .pill.bad{color:#ff6b6b;border-color:#ff6b6b}
+  .ownerbox{background:#0d1018;border:1px dashed var(--acc);border-radius:10px;padding:12px;margin-top:10px}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><a href="/" style="text-decoration:none"><b>アカシ</b></a></div>
+    <nav><a href="/app">新規作品</a><a href="/verify">検証</a></nav>
+  </header>
+
+  <div class="card" id="createCard">
+    <h2>作品をつくる</h2>
+    <p class="mut">ドキュメントの版を証跡として残すための「作品（リポジトリ）」を作ります。</p>
+    <label>タイトル</label>
+    <input id="title" placeholder="例: 新規アルゴリズムの研究ノート">
+    <label>メール（任意・控え用）</label>
+    <input id="email" placeholder="you@example.com">
+    <p style="margin-top:14px"><button class="btn" id="createBtn">作成</button></p>
+    <div class="ownerbox hide" id="ownerBox">
+      <b>オーナー専用リンク（このリンクから版を追加できます。保管してください）</b>
+      <p class="mono" id="ownerLink"></p>
+      <b>公開リンク（検証用に共有可）</b>
+      <p class="mono" id="publicLink"></p>
+    </div>
+  </div>
+
+  <div class="card hide" id="workCard">
+    <h2 id="workTitle">作品</h2>
+    <p class="mut">作品ID: <span class="mono" id="lidLabel"></span> · 連鎖: <span id="chainState"></span></p>
+    <p class="mut">署名鍵: <span class="mono" id="signerKey"></span></p>
+    <p><a id="ledgerDl" href="#">⤓ 台帳 (ledger.jsonl)</a> &nbsp; <a id="proofDl" href="#">⤓ OTS証明 (.ots)</a></p>
+
+    <div id="uploadArea" class="hide" style="border-top:1px solid var(--line);margin-top:8px;padding-top:8px">
+      <h2 style="font-size:15px">版を追加</h2>
+      <label>ファイル</label><input type="file" id="file">
+      <label>版タイトル（任意）</label><input id="vtitle" placeholder="例: v2 査読反映">
+      <label>メモ（任意）</label><input id="note">
+      <p style="margin-top:12px"><button class="btn" id="uploadBtn">アップロードして刻む</button> <span class="mut" id="upState"></span></p>
+    </div>
+
+    <h2 style="font-size:15px;margin-top:18px">版の履歴</h2>
+    <div id="versions"></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const q = new URLSearchParams(location.search);
+let LID = q.get('lid'), TOKEN = q.get('token');
+
+async function jpost(url, body){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.json();}
+
+$('#createBtn').onclick = async () => {
+  const title = $('#title').value.trim(); if(!title){alert('タイトルを入力してください');return;}
+  $('#createBtn').disabled=true;
+  const r = await jpost('/api/works', {title, email:$('#email').value.trim()});
+  $('#ownerLink').textContent = r.owner_link;
+  $('#publicLink').textContent = r.public_link;
+  $('#ownerBox').classList.remove('hide');
+  location.href = r.owner_link;
+};
+
+function pill(s){const c=s==='confirmed'?'ok':(s==='pending'?'pend':'bad');const t=s==='confirmed'?'確定':(s==='pending'?'保留中':'失敗');return `<span class="pill ${c}">${t}</span>`;}
+
+async function loadWork(){
+  if(!LID) return;
+  $('#createCard').classList.add('hide');
+  $('#workCard').classList.remove('hide');
+  $('#lidLabel').textContent = LID;
+  $('#ledgerDl').href = `/api/works/${LID}/ledger.jsonl`;
+  $('#proofDl').href = `/api/works/${LID}/proof.ots`;
+  if(TOKEN) $('#uploadArea').classList.remove('hide');
+
+  const w = await (await fetch(`/api/works/${LID}`)).json();
+  $('#chainState').innerHTML = w.chain_ok ? '<span class="pill ok">改ざんなし ✓</span>' : '<span class="pill bad">破損検出</span>';
+  $('#signerKey').textContent = w.signer_key || '—';
+  const ab={}; (w.anchors||[]).forEach(a=>ab[a.kind]=a);
+
+  const vs = (w.versions||[]).slice().reverse();
+  $('#versions').innerHTML = vs.length ? vs.map(v=>{
+    const d=v.doc||{}, sol=ab.solana, ots=ab.ots;
+    const solLink = sol&&sol.ref ? ` · <a href="https://explorer.solana.com/tx/${sol.ref}?cluster=devnet" target="_blank">Solana tx</a>` : '';
+    return `<div class="v">
+      <b>#${v.seq} ${d.title||d.filename||''}</b>
+      <div class="mut">${v.ts}</div>
+      <div class="mono">${d.sha256||''}</div>
+      <div style="margin-top:6px">${ots?('OTS(BTC) '+pill(ots.status)):''}${sol?(' &nbsp; Solana '+pill(sol.status)+solLink):''}</div>
+      <div style="margin-top:4px"><a href="/api/cas/${(d.sha256||'').replace('sha256:','')}" target="_blank">⤓ この版を取得</a> · <span class="mono">env ${v.env_id.slice(0,22)}…</span></div>
+      ${d.note?('<div class="mut" style="margin-top:4px">'+d.note+'</div>'):''}
+    </div>`;
+  }).join('') : '<p class="mut">まだ版がありません。</p>';
+}
+
+if($('#uploadBtn')) $('#uploadBtn').onclick = async () => {
+  const f = $('#file').files[0]; if(!f){alert('ファイルを選択してください');return;}
+  $('#uploadBtn').disabled=true; $('#upState').textContent='アップロード中…';
+  const fd = new FormData();
+  fd.append('token', TOKEN); fd.append('title', $('#vtitle').value);
+  fd.append('note', $('#note').value); fd.append('file', f);
+  const j = await (await fetch(`/api/works/${LID}/versions`, {method:'POST', body:fd})).json();
+  $('#uploadBtn').disabled=false;
+  if(!j.ok){$('#upState').textContent='失敗: '+(j.error||'');return;}
+  $('#upState').textContent='刻みました ✓'; $('#file').value=''; $('#vtitle').value=''; $('#note').value='';
+  loadWork();
+};
+
+loadWork();
+</script>
+</body>
+</html>
