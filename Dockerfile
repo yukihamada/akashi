@@ -16,7 +16,8 @@ COPY src ./src
 RUN touch src/main.rs && cargo build --release
 
 # ── Runtime ───────────────────────────────────
-FROM debian:bookworm-slim
+# Must match the builder's glibc (rust:1-slim is Debian trixie, glibc 2.39).
+FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates python3 python3-pip \
     && pip install --no-cache-dir --break-system-packages opentimestamps-client \
